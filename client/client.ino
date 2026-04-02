@@ -9,15 +9,15 @@
 #include <WebServer.h> // Ativacao servvidor web
 
 //variaveis
-const char* ssid = "nome da rede";
-const chat* password = "senha";
+const char* ssid = "IoT-B08";
+const char* password = "12345678";
 
 //login http
 const char* http_user = "admin";
 const char* http_password = "1234";
 
 // Iniciacao servidor
-Webserver server(80);
+WebServer server(80);
 
 //Led
 const int LED_PIN = 2; //conectando gpio2
