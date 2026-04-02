@@ -1,202 +1,246 @@
-//________________________________________
+// ──────────────────────────────────────────
+// ESP32 Web Server — LED + DHT11 Dashboard
+// ──────────────────────────────────────────
 
-// ESP32 WEB SERVER - LED - RETURN DE DHT11
+#include <WiFi.h>
+#include <WebServer.h>
 
-//________________________________________
-
-//inclusao de libs
-#include <WiFi.h> //Ativacao modulo WIFI
-#include <WebServer.h> // Ativacao servvidor web
-
-//variaveis
-const char* ssid = "IoT-B08";
+// WiFi
+const char* ssid     = "IoT-B08";
 const char* password = "12345678";
 
-//login http
+// Login HTTP
 const char* http_user = "admin";
-const char* http_password = "1234";
+const char* http_pass = "1234";
 
-// Iniciacao servidor
+// Servidor
 WebServer server(80);
 
-//Led
-const int LED_PIN = 2; //conectando gpio2
-bool ledState = false; // inicializa desligado
+// LED
+const int LED_PIN = 2;
+bool ledState = false;
 
-// Return DHT11
+// DHT (dados recebidos do outro ESP)
 float temperatura = 0;
 float umidade = 0;
 
-//Conexao
+// Estado WiFi
 bool wifiConnected = false;
 
-//____________________________________________
-// Autenticathor
-//____________________________________________
+// ──────────────────────────────────────────
+// Autenticação
+// ──────────────────────────────────────────
+bool isAuthenticated() {
 
-bool isAuthenticated(){
-  if (!server.authenticate(http_user, http_password)){
-    server.requestAuthenticator();
+  if (!server.authenticate(http_user, http_pass)) {
+    server.requestAuthentication();
     return false;
   }
-  return false
+
+  return true;
 }
 
-//____________________________________________
-// FRONTEND
-//____________________________________________
+// ──────────────────────────────────────────
+// HTML
+// ──────────────────────────────────────────
+String buildPage() {
 
-String buildPage(){
   String html = "<!DOCTYPE html><html><head>";
   html += "<meta charset='utf-8'>";
-  html += "<meta name = 'viewport' content='width=device-width'>";
-  html += "<title>ESP32</title>";
+  html += "<meta name='viewport' content='width=device-width'>";
+  html += "<title>ESP32 Dashboard</title>";
+  html += "<meta http-equiv='refresh' content='3'>";
+
   html += "<style>";
-  html += "body{font-family:sans-serif; text-align:center;padding:40px;background:#f4f4f4}";
-  html += ".on{background:#009d00; color:#f4f4f4}";
-  html += ".off{background:#F43208; color:#f4f4f4}";
-  html += "</head> <body>";
+  html += "body{font-family:sans-serif;text-align:center;padding:40px;background:#f4f4f4}";
+  html += "button{padding:16px 32px;font-size:18px;border:none;border-radius:8px;margin:8px}";
+  html += ".on{background:#009d00;color:#fff}";
+  html += ".off{background:#F4320B;color:#fff}";
+  html += "</style>";
 
+  html += "</head><body>";
 
-  html += "<h1> Comunicação LAN</h1>";
-  html += "<p> Status <Strong>";
-  html += (ledState) ? "LIGADO" : "DESLIGADO";
+  html += "<h1>Controle de LED</h1>";
+
+  html += "<p>Status: <strong>";
+  html += (ledState ? "LIGADO" : "DESLIGADO");
   html += "</strong></p>";
+
+  html += "<a href='/on'><button class='on'>LIGAR</button></a>";
+  html += "<a href='/off'><button class='off'>DESLIGAR</button></a>";
 
   html += "<hr>";
 
-  html += "<a href='/on'><button class ='on'>LIGAR</button></a>";
-  html += "<a href='/off'><button class ='off'>DESLIGAR</button></a>";
+  html += "<h2>Sensor DHT11</h2>";
 
-  html += "<h2>SENSOR DHT11</h2>";
   html += "<p>Temperatura: ";
   html += String(temperatura);
-  html += "%</p>";
+  html += " °C</p>";
+
+  html += "<p>Umidade: ";
+  html += String(umidade);
+  html += " %</p>";
 
   html += "</body></html>";
 
- return html;
+  return html;
 }
 
-  //-----------------------------------
-  //Wifi
-  //--------------------------------
-  bool connectWifi(){
-    Serial.println("\nWifi connect... Resetando a interface");
+// ──────────────────────────────────────────
+// WiFi
+// ──────────────────────────────────────────
+bool connectWiFi() {
 
-    Wifi.disconnect(true);
-    delay(1000);
+  Serial.println("\n[WiFi] Resetando interface...");
 
-    WiFi.mode(WIFI_STA);
-    WiFi.begin(ssid, password);
+  WiFi.disconnect(true);
+  delay(1000);
 
-    Serial.println("[WiFi] conectando...");
-    Serial.println("[WiFi] SSID:    ");
-    Serial.println(ssid);
+  WiFi.mode(WIFI_STA);
+  WiFi.begin(ssid, password);
 
-    int tentativas = 0;
+  Serial.println("[WiFi] Conectando...");
+  Serial.print("[WiFi] SSID: ");
+  Serial.println(ssid);
 
-    while (WiFi.status() != WL_CONNECT && tentativas < 20) {
-      delay(500);
-      Serial.println(".");
-      tentativas++;
-    }
+  int tentativas = 0;
 
-    if(WiFi.status() == WL_CONNECTED){
-      Serial.println("\n[WiFi] Conectado!!!");
-      Serial.println("[WiFi] IP:  ");
-      Serial.println(WiFi.localIP()); // retorna o ip, aqui acessaremos o servidor no navegador. 
-
-      return true;
-    } else {
-      Serial.println("\n[WiFi] Falha na conexão");
-      return false;
-    }
+  while (WiFi.status() != WL_CONNECTED && tentativas < 20) {
+    delay(500);
+    Serial.print(".");
+    tentativas++;
   }
 
-  //----------------------------------------------------------------
-  //Routes
-  //----------------------------------------------------------------
-void setupRoutes(){
-  //se autenticado
-  server.on("/", [](){
-    if(!isAuthenticated()) return;
+  if (WiFi.status() == WL_CONNECTED) {
+
+    Serial.println("\n[WiFi] Conectado!");
+    Serial.print("[WiFi] IP: ");
+    Serial.println(WiFi.localIP());
+
+    return true;
+
+  } else {
+
+    Serial.println("\n[WiFi] Falha na conexão.");
+    return false;
+
+  }
+}
+
+// ──────────────────────────────────────────
+// Rotas
+// ──────────────────────────────────────────
+void setupRoutes() {
+
+  // Página principal
+  server.on("/", []() {
+
+    if (!isAuthenticated()) return;
+
     server.send(200, "text/html", buildPage());
   });
 
-  server.on("/on", [](){
-    if(!isAuthenticated()) return;
+  // Ligar LED
+  server.on("/on", []() {
+
+    if (!isAuthenticated()) return;
+
     ledState = true;
     digitalWrite(LED_PIN, HIGH);
+
+    Serial.println("[LED] Ligado");
+
     server.sendHeader("Location", "/");
     server.send(303);
   });
 
-  server.on("/off", [](){
-    if(!isAuthenticated()) return;
+  // Desligar LED
+  server.on("/off", []() {
+
+    if (!isAuthenticated()) return;
+
     ledState = false;
     digitalWrite(LED_PIN, LOW);
+
+    Serial.println("[LED] Desligado");
+
     server.sendHeader("Location", "/");
     server.send(303);
   });
 
-  //rebecer dados do dht11
-  server.on("/update", [](){
-    //SEM AUTH
-    if(server.hasArg("temp")){
+  // Receber dados do ESP DHT
+  server.on("/update", []() {
+
+    // SEM autenticação aqui
+
+    if (server.hasArg("temp")) {
       temperatura = server.arg("temp").toFloat();
     }
 
-    if(server.hasArg("hum")){
+    if (server.hasArg("hum")) {
       umidade = server.arg("hum").toFloat();
     }
 
-    Serial.println("[DHT] Dados recebidos");
-    Serial.println("Temperatura: ");
+    Serial.println("[DHT] Dados recebidos:");
+    Serial.print("Temp: ");
     Serial.println(temperatura);
-    Serial.println("Umidade: ");
+    Serial.print("Umidade: ");
     Serial.println(umidade);
-    server.send(200, "text/plain", OK);
-  })
+
+    server.send(200, "text/plain", "OK");
+  });
 }
 
- //----------------------------------------------------------------
-  //SETUP
-  //----------------------------------------------------------------
-void setup(){
+// ──────────────────────────────────────────
+// Setup
+// ──────────────────────────────────────────
+void setup() {
+
   Serial.begin(115200);
   delay(1000);
-  Serial.println("\n[BOOT]Inicializando o ESP32...")
-  pinMode(LED_PIN,OUTPUT);
+
+  Serial.println("\n[BOOT] Inicializando ESP32...");
+
+  pinMode(LED_PIN, OUTPUT);
   digitalWrite(LED_PIN, LOW);
 
-  wifiConnected = connectWifi();
+  wifiConnected = connectWiFi();
+
   setupRoutes();
 
-  if(wifiConnected){
+  if (wifiConnected) {
+
     server.begin();
-    Serial.println("[HTTP] Servidor Iniciado!");
+    Serial.println("[HTTP] Servidor iniciado!");
+
   } else {
-    Serial.println("[HTTP]Servidor NÃO iniciado (sem WIFI)");
+
+    Serial.println("[HTTP] Servidor NÃO iniciado (sem WiFi)");
   }
 }
 
- //----------------------------------------------------------------
-  //Loop
-  //----------------------------------------------------------------
-void loop(){
-  if(WiFi.status()!= WL_CONNECTED){
-    if(wifiConnected){
-      Serial.println("[WIFI] Conexão Perdida");
+// ──────────────────────────────────────────
+// Loop
+// ──────────────────────────────────────────
+void loop() {
+
+  if (WiFi.status() != WL_CONNECTED) {
+
+    if (wifiConnected) {
+      Serial.println("[WiFi] Conexão perdida!");
       wifiConnected = false;
     }
+
     delay(2000);
     wifiConnected = connectWiFi();
-    if (wifiConnected){
+
+    if (wifiConnected) {
       server.begin();
-      Serial.println("[HTTP] Servidor reiniciado!")
+      Serial.println("[HTTP] Servidor reiniciado!");
     }
+
     return;
   }
+
   server.handleClient();
 }
